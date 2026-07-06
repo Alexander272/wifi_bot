@@ -4,6 +4,7 @@ import "time"
 
 type WifiSession struct {
 	UserID    string    `json:"user_id"`
+	Username  string    `json:"username"`
 	Code      string    `json:"code"`
 	Mac       string    `json:"mac"`
 	IP        string    `json:"ip"`

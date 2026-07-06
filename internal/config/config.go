@@ -9,6 +9,7 @@ import (
 
 type Config struct {
 	Environment string           `yaml:"environment" env:"APP_ENV" env-default:"dev"`
+	TestMode    bool             `yaml:"test_mode" env:"TEST_MODE" env-default:"false"`
 	LogLevel    string           `yaml:"log_level" env-default:"info"`
 	LogSource   bool             `yaml:"log_source" env-default:"false"`
 	Http        HttpConfig       `yaml:"http"`
@@ -48,11 +49,12 @@ type MikrotikConfig struct {
 	APIPort         int           `yaml:"api_port" env:"MIKROTIK_API_PORT" env-default:"443"`
 	APIUsername     string        `yaml:"api_username" env:"MIKROTIK_API_USER"`
 	APIPassword     string        `env:"MIKROTIK_API_PASS"`
-	UseSSL          bool          `yaml:"use_ssl" env:"MIKROTIK_USE_SSL" env-default:"true"`
+	UseSSL          bool          `yaml:"use_ssl" env:"MIKROTIK_USE_SSL" env-default:"false"`
 	AuthMethod      string        `yaml:"auth_method" env:"MIKROTIK_AUTH_METHOD" env-default:"chap"`
 	AuthTimeout     time.Duration `yaml:"auth_timeout" env:"MIKROTIK_AUTH_TIMEOUT" env-default:"10s"`
 	CollectInterval time.Duration `yaml:"collect_interval" env:"COLLECT_INTERVAL" env-default:"30s"`
-	AllowReuse      bool          `yaml:"allow_reuse" env:"MIKROTIK_ALLOW_REUSE" env-default:"true"`
+	AllowReuse      bool          `yaml:"allow_reuse" env:"MIKROTIK_ALLOW_REUSE" env-default:"false"`
+	AddressList     string        `yaml:"address_list" env:"MIKROTIK_ADDRESS_LIST"`
 }
 
 type MattermostConfig struct {

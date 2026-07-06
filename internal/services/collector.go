@@ -2,28 +2,40 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
+	"wifi_bot/internal/models"
 	"wifi_bot/internal/repo"
+	"wifi_bot/pkg/error_bot"
 	"wifi_bot/pkg/logger"
 	mikrotikClient "wifi_bot/pkg/mikrotik"
 )
 
 type Collector struct {
-	client   mikrotikClient.Client
-	hotspot  repo.Hotspot
-	interval time.Duration
-	mu       sync.Mutex
-	running  bool
-	stopCh   chan struct{}
+	client      mikrotikClient.Client
+	mikrotik    *MikrotikService
+	hotspot     repo.Hotspot
+	userSession repo.UserSession
+	interval    time.Duration
+	codeTTL     time.Duration
+	mu          sync.Mutex
+	running     bool
+	stopCh      chan struct{}
+	cycleCount      int
+	lastMikrotikErr bool
+	lastDBErr       bool
 }
 
-func NewCollector(client mikrotikClient.Client, hotspot repo.Hotspot, interval time.Duration) *Collector {
+func NewCollector(client mikrotikClient.Client, mikrotik *MikrotikService, hotspot repo.Hotspot, userSession repo.UserSession, interval, codeTTL time.Duration) *Collector {
 	return &Collector{
-		client:   client,
-		hotspot:  hotspot,
-		interval: interval,
+		client:      client,
+		mikrotik:    mikrotik,
+		hotspot:     hotspot,
+		userSession: userSession,
+		interval:    interval,
+		codeTTL:     codeTTL,
 	}
 }
 
@@ -46,6 +58,14 @@ func (c *Collector) Start(ctx context.Context) {
 	logger.Info("collector: started", logger.StringAttr("interval", c.interval.String()))
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Error("collector: panic recovered",
+					logger.StringAttr("panic", fmt.Sprintf("%v", r)))
+				error_bot.Send(nil, fmt.Sprintf("collector: panic recovered: %v", r), nil)
+			}
+		}()
+
 		ticker := time.NewTicker(c.interval)
 		defer ticker.Stop()
 
@@ -84,17 +104,115 @@ func (c *Collector) Toggle(ctx context.Context, on bool) {
 }
 
 func (c *Collector) collect(ctx context.Context) {
-	sessions, err := c.client.ListSessions(ctx)
+	c.cycleCount++
+
+	mikrotikSessions, err := c.client.ListSessions(ctx)
 	if err != nil {
 		logger.Error("collector: failed to list sessions", logger.ErrAttr(err))
+		if !c.lastMikrotikErr {
+			c.lastMikrotikErr = true
+			error_bot.Send(nil, fmt.Sprintf("collector: mikrotik unavailable: %v", err), nil)
+		}
+		return
+	}
+	c.lastMikrotikErr = false
+
+	if len(mikrotikSessions) > 0 {
+		if err := c.hotspot.SaveBatch(ctx, mikrotikSessions); err != nil {
+			logger.Error("collector: failed to save sessions", logger.ErrAttr(err))
+		}
+	}
+
+	active, err := c.userSession.ListActive(ctx)
+	if err != nil {
+		logger.Error("collector: failed to list active user sessions", logger.ErrAttr(err))
+		if !c.lastDBErr {
+			c.lastDBErr = true
+			error_bot.Send(nil, fmt.Sprintf("collector: database unavailable: %v", err), nil)
+		}
+		return
+	}
+	c.lastDBErr = false
+
+	c.syncUserSessions(ctx, mikrotikSessions, active)
+	if err := c.mikrotik.SyncAddressList(ctx, active); err != nil {
+		logger.Error("collector: sync address list failed", logger.ErrAttr(err))
+	}
+
+	if c.cycleCount%10 == 0 {
+		c.cleanupExpiredSessions(ctx)
+	}
+}
+
+func (c *Collector) cleanupExpiredSessions(ctx context.Context) {
+	if c.codeTTL <= 0 {
 		return
 	}
 
-	if len(sessions) == 0 {
+	threshold := time.Now().Add(-c.codeTTL - time.Hour)
+
+	active, err := c.userSession.ListActive(ctx)
+	if err != nil {
+		logger.Error("safety-net: failed to list active sessions", logger.ErrAttr(err))
 		return
 	}
 
-	if err := c.hotspot.SaveBatch(ctx, sessions); err != nil {
-		logger.Error("collector: failed to save sessions", logger.ErrAttr(err))
+	for _, s := range active {
+		if s.LoginAt.Before(threshold) {
+			logger.Info("safety-net: disconnecting expired session",
+				logger.StringAttr("mac", s.Mac),
+				logger.StringAttr("user_id", s.UserID),
+				logger.TimeAttr("login_at", s.LoginAt),
+			)
+			c.mikrotik.Disconnect(ctx, s.Mac)
+		}
+	}
+
+	n, err := c.userSession.CloseInactiveOlderThan(ctx, threshold)
+	if err != nil {
+		logger.Error("safety-net: failed to close expired sessions", logger.ErrAttr(err))
+		return
+	}
+	if n > 0 {
+		logger.Info("safety-net: closed expired sessions", logger.IntAttr("count", int(n)))
+	}
+}
+
+func (c *Collector) syncUserSessions(ctx context.Context, mikrotikSessions []mikrotikClient.HotspotSession, active []models.UserSession) {
+	if len(active) == 0 {
+		return
+	}
+
+	activeMACs := make(map[string]struct{}, len(mikrotikSessions))
+	for _, s := range mikrotikSessions {
+		activeMACs[s.Mac] = struct{}{}
+	}
+
+	now := time.Now()
+
+	for _, s := range active {
+		if len(mikrotikSessions) > 0 {
+			if _, ok := activeMACs[s.Mac]; !ok {
+				logger.Info("collector: session not in mikrotik, cleaning up",
+					logger.StringAttr("mac", s.Mac),
+					logger.StringAttr("user_id", s.UserID),
+				)
+				c.mikrotik.Disconnect(ctx, s.Mac)
+				if err := c.userSession.CloseActive(ctx, s.Mac); err != nil {
+					logger.Error("collector: failed to close stale user session", logger.ErrAttr(err))
+				}
+				continue
+			}
+		}
+		if c.codeTTL > 0 && s.LoginAt.Add(c.codeTTL).Before(now) {
+			logger.Info("collector: code ttl expired, disconnecting",
+				logger.StringAttr("mac", s.Mac),
+				logger.StringAttr("user_id", s.UserID),
+			)
+			c.mikrotik.Disconnect(ctx, s.Mac)
+			if err := c.userSession.CloseActive(ctx, s.Mac); err != nil {
+				logger.Error("collector: failed to close expired user session", logger.ErrAttr(err))
+			}
+		}
 	}
 }

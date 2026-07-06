@@ -2,9 +2,13 @@ package error_bot
 
 import (
 	"bytes"
-	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/goccy/go-json"
 
 	"wifi_bot/pkg/logger"
 )
@@ -20,19 +24,30 @@ type Service struct {
 }
 
 type MessageData struct {
+	Date    string `json:"date"`
 	Error   string `json:"error"`
+	IP      string `json:"ip"`
+	URL     string `json:"url"`
 	Request string `json:"request,omitempty"`
 }
 
-func Send(errorText string, request any) {
-	webhookURL := os.Getenv("ERR_URL")
-	if webhookURL == "" {
-		return
+func Send(c *gin.Context, e string, request any) {
+	data := &MessageData{
+		Date:  time.Now().Format("02/01/2006 - 15:04:05"),
+		Error: e,
+	}
+	if c != nil {
+		data.IP = c.ClientIP()
+		data.URL = fmt.Sprintf("%s %s", c.Request.Method, c.Request.URL.String())
 	}
 
-	var reqData []byte
 	if request != nil {
-		reqData, _ = json.MarshalIndent(request, "", "    ")
+		req, err := json.MarshalIndent(request, "", "    ")
+		if err != nil {
+			logger.Error("error_bot: failed to marshal request", logger.ErrAttr(err))
+		} else {
+			data.Request = string(req)
+		}
 	}
 
 	msg := Message{
@@ -40,15 +55,17 @@ func Send(errorText string, request any) {
 			Id:   os.Getenv("SERVICE_ID"),
 			Name: os.Getenv("SERVICE_NAME"),
 		},
-		Data: &MessageData{
-			Error:   errorText,
-			Request: string(reqData),
-		},
+		Data: data,
 	}
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(msg); err != nil {
 		logger.Error("error_bot: failed to encode", logger.ErrAttr(err))
+		return
+	}
+
+	webhookURL := os.Getenv("ERR_URL")
+	if webhookURL == "" {
 		return
 	}
 

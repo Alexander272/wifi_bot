@@ -10,6 +10,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"wifi_bot/pkg/error_bot"
 	"wifi_bot/pkg/logger"
 )
 
@@ -27,17 +28,19 @@ type wsEvent struct {
 type Event struct {
 	ChannelType string
 	Post        Post
+	Username    string
 }
 
-type EventHandler func(Event)
+type EventHandler func(context.Context, Event)
 
 type WSClient struct {
-	conn     *websocket.Conn
-	baseURL  string
-	token    string
-	handler  EventHandler
-	userID   string
-	dialer   *websocket.Dialer
+	conn         *websocket.Conn
+	baseURL      string
+	token        string
+	handler      EventHandler
+	userID       string
+	dialer       *websocket.Dialer
+	wasConnected bool
 }
 
 func NewWSClient(serverURL, token string) *WSClient {
@@ -124,9 +127,10 @@ func (w *WSClient) Listen(ctx context.Context) error {
 			continue
 		}
 
-		w.handler(Event{
+		w.handler(ctx, Event{
 			ChannelType: data.ChannelType,
 			Post:        post,
+			Username:    data.SenderName,
 		})
 	}
 }
@@ -137,7 +141,11 @@ func (w *WSClient) Run(ctx context.Context) {
 
 	for {
 		if err := w.Connect(ctx); err != nil {
-			logger.Warn("mattermost ws: connect error, retry in %v", logger.ErrAttr(err))
+			logger.Warn("mattermost ws: connect error, retrying...", logger.ErrAttr(err))
+			if w.wasConnected {
+				w.wasConnected = false
+				error_bot.Send(nil, fmt.Sprintf("mattermost ws: disconnected: %v", err), nil)
+			}
 			select {
 			case <-ctx.Done():
 				return
@@ -150,11 +158,18 @@ func (w *WSClient) Run(ctx context.Context) {
 			continue
 		}
 		backoff = 1 * time.Second
+		w.wasConnected = true
 
 		logger.Info("mattermost ws: connected")
 
 		done := make(chan error, 1)
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					error_bot.Send(nil, fmt.Sprintf("mattermost ws: listen panic: %v", r), nil)
+					done <- fmt.Errorf("panic: %v", r)
+				}
+			}()
 			done <- w.Listen(ctx)
 		}()
 

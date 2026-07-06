@@ -76,8 +76,12 @@ func (r *SessionRepo) UpdateMac(ctx context.Context, code, mac, ip string) error
 	if err != nil {
 		return fmt.Errorf("marshal error: %w", err)
 	}
-	if err := r.client.Set(ctx, codeKey(code), body, r.ttl).Err(); err != nil {
-		return fmt.Errorf("redis set error: %w", err)
+
+	pipe := r.client.TxPipeline()
+	pipe.Set(ctx, codeKey(code), body, r.ttl)
+	pipe.Set(ctx, userKey(session.UserID), session.Code, r.ttl)
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("redis pipeline error: %w", err)
 	}
 	return nil
 }

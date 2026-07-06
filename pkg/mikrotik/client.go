@@ -19,11 +19,22 @@ type HotspotSession struct {
 	Server     string
 }
 
+type AddressListEntry struct {
+	ID      string
+	Address string
+	List    string
+	Comment string
+}
+
 type Client interface {
 	Disconnect(ctx context.Context, mac string) error
 	ListSessions(ctx context.Context) ([]HotspotSession, error)
 	AddBinding(ctx context.Context, mac string) error
 	RemoveBinding(ctx context.Context, mac string) error
+	BlockBinding(ctx context.Context, mac string) error
+	AddAddressToList(ctx context.Context, ip, list, comment string) error
+	RemoveAddressFromList(ctx context.Context, list, comment string) error
+	ListAddressList(ctx context.Context, list string) ([]AddressListEntry, error)
 }
 
 type Config struct {
@@ -41,6 +52,8 @@ func NewClient(conf *Config) (Client, error) {
 		return newV6(conf), nil
 	case "v7":
 		return newV7(conf), nil
+	case APIVersionRouterOS:
+		return newRouterOS(conf), nil
 	default:
 		return nil, fmt.Errorf("unknown mikrotik api version: %s", conf.APIVersion)
 	}

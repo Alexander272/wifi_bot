@@ -2,7 +2,6 @@ package transport
 
 import (
 	"errors"
-	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -28,7 +27,7 @@ type successData struct {
 }
 
 func (h *Handler) HandlePortalPage(c *gin.Context) {
-	log.Printf("Полный URI запроса: %s", c.Request.RequestURI)
+	logger.Debug("portal page request", logger.StringAttr("uri", c.Request.RequestURI))
 
 	mac := c.Query("mac")
 	ip := c.Query("ip")
@@ -77,7 +76,7 @@ func (h *Handler) HandlePortalLogin(c *gin.Context) {
 			errMsg = "Код уже используется на другом устройстве. Сбросьте код в Mattermost (/wifi_reset)."
 		case errors.Is(err, models.ErrMikrotikAuth):
 			errMsg = "Временные проблемы на сервере, попробуйте позже."
-			error_bot.Send(err.Error(), nil)
+			error_bot.Send(c, err.Error(), nil)
 		}
 
 		c.HTML(http.StatusOK, "portal.html", portalData{

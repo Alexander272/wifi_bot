@@ -1,9 +1,9 @@
 package services
 
 import (
-	"math/rand"
+	"crypto/rand"
+	"math/big"
 	"strings"
-	"time"
 )
 
 type CodeService struct{}
@@ -15,10 +15,11 @@ func NewCodeService() *CodeService {
 const codeChars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 func (s *CodeService) Generate() string {
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	b := make([]byte, 6)
+	n := big.NewInt(int64(len(codeChars)))
 	for i := range b {
-		b[i] = codeChars[r.Intn(len(codeChars))]
+		idx, _ := rand.Int(rand.Reader, n)
+		b[i] = codeChars[idx.Int64()]
 	}
 	return string(b)
 }
