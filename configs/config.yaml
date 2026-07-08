@@ -37,5 +37,6 @@ mikrotik:
 mattermost:
     code_ttl: 8h
     bot_username: pro_errors_bot
-    team_name: 'IT Служба'
+    team_name: 'it'
+    portal_team_name: 'itr'
     admin_ids: []

@@ -173,6 +173,7 @@ func (c *Collector) cleanupExpiredSessions(ctx context.Context) {
 			logger.Info("safety-net: disconnecting expired session",
 				logger.StringAttr("mac", s.Mac),
 				logger.StringAttr("user_id", s.UserID),
+				logger.StringAttr("username", s.Username),
 				logger.TimeAttr("login_at", s.LoginAt),
 			)
 			c.mikrotik.Disconnect(ctx, s.Mac)
@@ -214,6 +215,7 @@ func (c *Collector) syncUserSessions(ctx context.Context, mikrotikSessions []mik
 				logger.Info("collector: session not in mikrotik, cleaning up",
 					logger.StringAttr("mac", s.Mac),
 					logger.StringAttr("user_id", s.UserID),
+					logger.StringAttr("username", s.Username),
 				)
 				c.mikrotik.Disconnect(ctx, s.Mac)
 				if err := c.userSession.CloseActive(ctx, s.Mac); err != nil {
@@ -227,6 +229,7 @@ func (c *Collector) syncUserSessions(ctx context.Context, mikrotikSessions []mik
 			logger.Info("collector: code ttl expired, disconnecting",
 				logger.StringAttr("mac", s.Mac),
 				logger.StringAttr("user_id", s.UserID),
+				logger.StringAttr("username", s.Username),
 			)
 			c.mikrotik.Disconnect(ctx, s.Mac)
 			if err := c.userSession.CloseActive(ctx, s.Mac); err != nil {

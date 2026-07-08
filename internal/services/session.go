@@ -93,7 +93,8 @@ func (s *SessionService) ResetCodeWithTTL(ctx context.Context, userID, username 
 	mac, err := s.resolveMAC(ctx, userID)
 	if err != nil {
 		logger.Error("reset code: resolveMAC failed",
-			logger.ErrAttr(err), logger.StringAttr("user_id", userID))
+			logger.ErrAttr(err), logger.StringAttr("user_id", userID),
+			logger.StringAttr("username", username))
 	}
 
 	oldCode, err := s.sessionRepo.DeleteByUser(ctx, userID)
@@ -107,7 +108,8 @@ func (s *SessionService) ResetCodeWithTTL(ctx context.Context, userID, username 
 			logger.Error("failed to log code_reset", logger.ErrAttr(err))
 		}
 	} else {
-		logger.Error("delete session by user failed", logger.ErrAttr(err), logger.StringAttr("user_id", userID))
+		logger.Error("delete session by user failed", logger.ErrAttr(err),
+			logger.StringAttr("user_id", userID), logger.StringAttr("username", username))
 	}
 
 	if mac != "" {
@@ -118,7 +120,7 @@ func (s *SessionService) ResetCodeWithTTL(ctx context.Context, userID, username 
 		}
 	} else {
 		logger.Warn("reset code: no mac found for disconnect",
-			logger.StringAttr("user_id", userID))
+			logger.StringAttr("user_id", userID), logger.StringAttr("username", username))
 	}
 
 	code := s.code.Generate()

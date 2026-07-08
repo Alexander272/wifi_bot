@@ -58,12 +58,13 @@ type MikrotikConfig struct {
 }
 
 type MattermostConfig struct {
-	Token       string        `env:"MOST_TOKEN"`
-	Server      string        `env:"MOST_SERVER"`
-	CodeTTL     time.Duration `yaml:"code_ttl" env:"CODE_TTL" env-default:"24h"`
-	BotUsername string        `yaml:"bot_username" env:"MOST_BOT_USERNAME" env-default:"wifi_bot"`
-	TeamName    string        `yaml:"team_name" env:"MOST_TEAM_NAME"`
-	AdminIDs    []string      `yaml:"admin_ids"`
+	Token          string        `env:"MOST_TOKEN"`
+	Server         string        `env:"MOST_SERVER"`
+	CodeTTL        time.Duration `yaml:"code_ttl" env:"CODE_TTL" env-default:"24h"`
+	BotUsername    string        `yaml:"bot_username" env:"MOST_BOT_USERNAME" env-default:"wifi_bot"`
+	TeamName       string        `yaml:"team_name" env:"MOST_TEAM_NAME"`
+	PortalTeamName string        `yaml:"portal_team_name" env:"MOST_PORTAL_TEAM_NAME"`
+	AdminIDs       []string      `yaml:"admin_ids"`
 }
 
 func Init(path string) (*Config, error) {

@@ -18,20 +18,29 @@ import (
 type Handler struct {
 	services     *services.Services
 	token        string
-	deepLink     string
+	mmLink       string
+	httpsLink    string
 	templates    *template.Template
 	rateLimiters sync.Map
 }
 
-func NewHandler(svc *services.Services, token, server, teamName, botUsername string) *Handler {
+func NewHandler(svc *services.Services, token, server, teamName, portalTeamName, botUsername string) *Handler {
+	portalTeam := portalTeamName
+	if portalTeam == "" {
+		portalTeam = teamName
+	}
+
 	host := strings.TrimPrefix(server, "https://")
 	host = strings.TrimPrefix(host, "http://")
-	deepLink := fmt.Sprintf("mattermost://%s/%s/messages/@%s", host, teamName, botUsername)
+
+	mmLink := fmt.Sprintf("mattermost://%s/%s/messages/@%s", host, portalTeam, botUsername)
+	httpsLink := fmt.Sprintf("%s/%s/messages/@%s", server, portalTeam, botUsername)
 
 	return &Handler{
-		services: svc,
-		token:    token,
-		deepLink: deepLink,
+		services:  svc,
+		token:     token,
+		mmLink:    mmLink,
+		httpsLink: httpsLink,
 		templates: template.Must(
 			template.New("").Funcs(template.FuncMap{
 				"safeURL": func(s string) template.URL { return template.URL(s) },

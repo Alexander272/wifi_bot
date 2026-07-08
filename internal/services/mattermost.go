@@ -198,6 +198,7 @@ func (b *MattermostBot) handleEvent(ctx context.Context, ev mm.Event) {
 
 	logger.Debug("mattermost: dm received",
 		logger.StringAttr("user_id", userID),
+		logger.StringAttr("username", ev.Username),
 		logger.StringAttr("message", message),
 	)
 

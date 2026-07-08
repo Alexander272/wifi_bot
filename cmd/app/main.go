@@ -102,7 +102,7 @@ func main() {
 	svc.MattermostBot = mmBot
 
 	handler := transport.NewHandler(svc, conf.Mattermost.Token,
-		conf.Mattermost.Server, conf.Mattermost.TeamName, conf.Mattermost.BotUsername)
+		conf.Mattermost.Server, conf.Mattermost.TeamName, conf.Mattermost.PortalTeamName, conf.Mattermost.BotUsername)
 
 	srv := &http.Server{
 		Addr:           ":" + conf.Http.Port,

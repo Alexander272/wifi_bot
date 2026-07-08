@@ -248,11 +248,23 @@
     </form>
 
     <div class="footer">
-      Нет кода? <a href="{{.DeepLink | safeURL}}" target="_blank">напишите "wifi" боту в Mattermost</a>
+      Нет кода?
+      <a id="mmLink" href="{{.MMLink | safeURL}}" data-https="{{.HTTPSLink | safeURL}}">напишите "wifi" боту в Mattermost</a>
     </div>
   </div>
 
   <script>
+    document.getElementById('mmLink').addEventListener('click', function(e) {
+      e.preventDefault();
+      window.location.href = this.href;
+      var fallback = setTimeout(function() {
+        window.location.href = document.getElementById('mmLink').dataset.https;
+      }, 2000);
+      window.addEventListener('blur', function() {
+        clearTimeout(fallback);
+      }, {once: true});
+    });
+
     document.getElementById('code').addEventListener('input', function (e) {
       this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
     });

@@ -18,7 +18,8 @@ type portalData struct {
 	Challenge     string
 	LinkOrig      string
 	Error         string
-	DeepLink      string
+	MMLink        string
+	HTTPSLink     string
 }
 
 type successData struct {
@@ -42,7 +43,7 @@ func (h *Handler) HandlePortalPage(c *gin.Context) {
 
 	c.HTML(http.StatusOK, "portal.html", portalData{
 		Mac: mac, IP: ip, LinkLoginOnly: linkLoginOnly, Challenge: challenge,
-		LinkOrig: linkOrig, DeepLink: h.deepLink,
+		LinkOrig: linkOrig, MMLink: h.mmLink, HTTPSLink: h.httpsLink,
 	})
 }
 
@@ -56,8 +57,9 @@ func (h *Handler) HandlePortalLogin(c *gin.Context) {
 	if code == "" || mac == "" || linkLoginOnly == "" {
 		c.HTML(http.StatusOK, "portal.html", portalData{
 			Mac: mac, IP: ip, LinkLoginOnly: linkLoginOnly, Challenge: challenge,
-			Error:    "Заполните все поля.",
-			DeepLink: h.deepLink,
+			Error:     "Заполните все поля.",
+			MMLink:    h.mmLink,
+			HTTPSLink: h.httpsLink,
 		})
 		return
 	}
@@ -82,7 +84,8 @@ func (h *Handler) HandlePortalLogin(c *gin.Context) {
 		c.HTML(http.StatusOK, "portal.html", portalData{
 			Mac: mac, IP: ip, LinkLoginOnly: linkLoginOnly, Challenge: challenge,
 			LinkOrig: linkOrig, Error: errMsg,
-			DeepLink: h.deepLink,
+			MMLink:    h.mmLink,
+			HTTPSLink: h.httpsLink,
 		})
 		return
 	}
