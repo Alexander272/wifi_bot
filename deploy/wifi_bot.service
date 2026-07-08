@@ -1,0 +1,31 @@
+[Unit]
+Description=WiFi Bot — генератор кодов доступа к Wi-Fi
+After=network-online.target postgresql.service redis.service
+Wants=network-online.target postgresql.service redis.service
+
+[Service]
+Type=simple
+User=wifi_bot
+Group=wifi_bot
+
+WorkingDirectory=/var/lib/wifi_bot
+ExecStart=/usr/local/bin/wifi_bot
+
+Restart=on-failure
+RestartSec=10s
+
+# Graceful shutdown
+KillSignal=SIGTERM
+TimeoutStopSec=15s
+
+# Hardening
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
