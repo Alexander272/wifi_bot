@@ -23,6 +23,13 @@ func NewSessionRepo(ttl time.Duration) *SessionRepo {
 	}
 }
 
+func (r *SessionRepo) ttlFor(s *models.WifiSession) time.Duration {
+	if s.TTLDuration > 0 {
+		return s.TTLDuration
+	}
+	return r.ttl
+}
+
 func (r *SessionRepo) GetByCode(_ context.Context, code string) (*models.WifiSession, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -31,7 +38,8 @@ func (r *SessionRepo) GetByCode(_ context.Context, code string) (*models.WifiSes
 	if !ok {
 		return nil, models.ErrSessionNotFound
 	}
-	if r.ttl > 0 && time.Since(s.CreatedAt) > r.ttl {
+	ttl := r.ttlFor(s)
+	if ttl > 0 && time.Since(s.CreatedAt) > ttl {
 		return nil, models.ErrSessionNotFound
 	}
 	return s, nil

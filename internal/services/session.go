@@ -43,11 +43,17 @@ func NewSessionService(deps *SessionDeps) *SessionService {
 
 type Session interface {
 	GetOrCreateCode(ctx context.Context, userID, username string) (string, error)
+	GetOrCreateCodeWithTTL(ctx context.Context, userID, username string, ttl time.Duration) (string, error)
 	ResetCode(ctx context.Context, userID, username string) (string, error)
+	ResetCodeWithTTL(ctx context.Context, userID, username string, ttl time.Duration) (string, error)
 	Login(ctx context.Context, code, mac, ip, linkLoginOnly, challenge, linkOrig string) error
 }
 
 func (s *SessionService) GetOrCreateCode(ctx context.Context, userID, username string) (string, error) {
+	return s.GetOrCreateCodeWithTTL(ctx, userID, username, 0)
+}
+
+func (s *SessionService) GetOrCreateCodeWithTTL(ctx context.Context, userID, username string, ttl time.Duration) (string, error) {
 	existing, err := s.sessionRepo.GetByUser(ctx, userID)
 	if err == nil && existing != nil {
 		return existing.Code, nil
@@ -55,10 +61,11 @@ func (s *SessionService) GetOrCreateCode(ctx context.Context, userID, username s
 
 	code := s.code.Generate()
 	session := &models.WifiSession{
-		UserID:    userID,
-		Username:  username,
-		Code:      code,
-		CreatedAt: time.Now(),
+		UserID:      userID,
+		Username:    username,
+		Code:        code,
+		CreatedAt:   time.Now(),
+		TTLDuration: ttl,
 	}
 
 	if err := s.sessionRepo.Create(ctx, session); err != nil {
@@ -79,6 +86,10 @@ func (s *SessionService) GetOrCreateCode(ctx context.Context, userID, username s
 }
 
 func (s *SessionService) ResetCode(ctx context.Context, userID, username string) (string, error) {
+	return s.ResetCodeWithTTL(ctx, userID, username, 0)
+}
+
+func (s *SessionService) ResetCodeWithTTL(ctx context.Context, userID, username string, ttl time.Duration) (string, error) {
 	mac, err := s.resolveMAC(ctx, userID)
 	if err != nil {
 		logger.Error("reset code: resolveMAC failed",
@@ -112,10 +123,11 @@ func (s *SessionService) ResetCode(ctx context.Context, userID, username string)
 
 	code := s.code.Generate()
 	session := &models.WifiSession{
-		UserID:    userID,
-		Username:  username,
-		Code:      code,
-		CreatedAt: time.Now(),
+		UserID:      userID,
+		Username:    username,
+		Code:        code,
+		CreatedAt:   time.Now(),
+		TTLDuration: ttl,
 	}
 
 	if err := s.sessionRepo.Create(ctx, session); err != nil {
@@ -295,12 +307,13 @@ func (s *SessionService) Login(ctx context.Context, code, mac, ip, linkLoginOnly
 	}
 
 	if err := s.userSessionRepo.Create(ctx, &models.UserSession{
-		UserID:   session.UserID,
-		Username: session.Username,
-		Code:     code,
-		Mac:      mac,
-		IP:       ip,
-		LoginAt:  time.Now(),
+		UserID:      session.UserID,
+		Username:    session.Username,
+		Code:        code,
+		Mac:         mac,
+		IP:          ip,
+		LoginAt:     time.Now(),
+		TTLDuration: session.TTLDuration,
 	}); err != nil {
 		s.mikrotik.Disconnect(ctx, mac)
 		return fmt.Errorf("failed to create user session: %w", err)

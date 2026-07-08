@@ -208,8 +208,12 @@ func (b *MattermostBot) handleEvent(ctx context.Context, ev mm.Event) {
 	case "wifi", "wi-fi", "/wifi", "вайфай", "вай-фай", "/вайфай":
 		text = b.handleWifi(ctx, userID, ev.Username)
 	case "reset", "/reset", "сбросить", "/сбросить":
-		text = b.handleReset(ctx, userID, ev.Username)
-	case "wifi_code", "/wifi_code", "код", "сгенерить":
+		if b.isAdmin(userID) && len(strings.Fields(message)) > 1 {
+			text = b.handleAdminReset(ctx, userID, message)
+		} else {
+			text = b.handleReset(ctx, userID, ev.Username)
+		}
+	case "wifi_code", "/wifi_code", "code", "/code", "код", "сгенерить":
 		text = b.handleAdminCode(ctx, userID, message)
 	case "stats", "/stats", "статистика", "/статистика":
 		text = b.handleStats(ctx, userID, message)
@@ -262,19 +266,76 @@ func (b *MattermostBot) handleAdminCode(ctx context.Context, userID, message str
 	}
 	parts := strings.Fields(message)
 	if len(parts) < 2 {
-		return "Укажите ФИО: `wifi_code Иванов Иван`"
+		return "Укажите ФИО: `code Иванов Иван [TTL]`\nTTL — опционально, например: `72h`, `48h`, `30m`"
 	}
-	name := strings.Join(parts[1:], " ")
+
+	var ttl time.Duration
+	nameParts := parts[1:]
+	if last := nameParts[len(nameParts)-1]; len(nameParts) > 1 {
+		if d, err := time.ParseDuration(last); err == nil {
+			ttl = d
+			nameParts = nameParts[:len(nameParts)-1]
+		}
+	}
+	name := strings.Join(nameParts, " ")
+
 	rlKey := "wifi:ratelimit:codegen:" + userID
 	if !checkRateLimitDuration(rlKey, 30*time.Second) {
 		return "Слишком частые запросы. Подождите 30 секунд."
 	}
-	code, err := b.session.GetOrCreateCode(ctx, "admin_generated:"+name, name)
+
+	var code string
+	var err error
+	if ttl > 0 {
+		code, err = b.session.GetOrCreateCodeWithTTL(ctx, "admin_generated:"+name, name, ttl)
+	} else {
+		code, err = b.session.GetOrCreateCode(ctx, "admin_generated:"+name, name)
+	}
 	if err != nil {
 		logger.Error("mattermost: failed to generate admin code", logger.ErrAttr(err))
 		return "Ошибка при генерации кода."
 	}
-	return "✅ Код для **" + name + "**: **" + code + "**"
+	resp := "✅ Код для **" + name + "**: **" + code + "**"
+	if ttl > 0 {
+		resp += "\n⏱ Время жизни: **" + ttl.String() + "**"
+	}
+	return resp
+}
+
+func (b *MattermostBot) handleAdminReset(ctx context.Context, userID, message string) string {
+	if !b.isAdmin(userID) {
+		return "❌ Команда только для администраторов."
+	}
+	parts := strings.Fields(message)
+	if len(parts) < 2 {
+		return "Укажите ФИО: `reset Иванов Иван [TTL]`"
+	}
+
+	var ttl time.Duration
+	nameParts := parts[1:]
+	if last := nameParts[len(nameParts)-1]; len(nameParts) > 1 {
+		if d, err := time.ParseDuration(last); err == nil {
+			ttl = d
+			nameParts = nameParts[:len(nameParts)-1]
+		}
+	}
+	name := strings.Join(nameParts, " ")
+
+	rlKey := "wifi:ratelimit:codegen:" + userID
+	if !checkRateLimitDuration(rlKey, 30*time.Second) {
+		return "Слишком частые запросы. Подождите 30 секунд."
+	}
+
+	code, err := b.session.ResetCodeWithTTL(ctx, "admin_generated:"+name, name, ttl)
+	if err != nil {
+		logger.Error("mattermost: failed to admin reset code", logger.ErrAttr(err))
+		return "Ошибка при сбросе кода."
+	}
+	resp := "✅ Код для **" + name + "** сброшен.\nНовый код: **" + code + "**"
+	if ttl > 0 {
+		resp += "\n⏱ Время жизни: **" + ttl.String() + "**"
+	}
+	return resp
 }
 
 func (b *MattermostBot) handleStats(ctx context.Context, userID, message string) string {
@@ -444,7 +505,9 @@ func (b *MattermostBot) handleHelp(userID string) string {
 		"- `reset` / `сбросить` — сбросить код и отключить текущее устройство"
 	if b.isAdmin(userID) {
 		text += "\n\nАдмин-команды:\n" +
-			"- `wifi_code <ФИО>` / `сгенерить <ФИО>` — сгенерировать код для любого человека\n" +
+			"- `code <ФИО> [TTL]` / `сгенерить <ФИО>` — сгенерировать код\n" +
+			"  TTL: `72h`, `48h`, `30m` и т.д. (по умолчанию из конфига)\n" +
+			"- `reset <ФИО> [TTL]` / `сбросить <ФИО> [TTL]` — сбросить код пользователя\n" +
 			"- `stats [дата]` / `статистика [дата]` — статистика использования\n" +
 			"- `userstats <ФИО> [дата]` / `юзерстат <ФИО> [дата]` — статистика пользователя"
 	}

@@ -49,15 +49,23 @@ func (r *SessionRepo) GetByUser(ctx context.Context, userID string) (*models.Wif
 	return r.GetByCode(ctx, code)
 }
 
+func (r *SessionRepo) ttlFor(session *models.WifiSession) time.Duration {
+	if session.TTLDuration > 0 {
+		return session.TTLDuration
+	}
+	return r.ttl
+}
+
 func (r *SessionRepo) Create(ctx context.Context, session *models.WifiSession) error {
 	body, err := json.Marshal(session)
 	if err != nil {
 		return fmt.Errorf("marshal error: %w", err)
 	}
 
+	ttl := r.ttlFor(session)
 	pipe := r.client.TxPipeline()
-	pipe.Set(ctx, codeKey(session.Code), body, r.ttl)
-	pipe.Set(ctx, userKey(session.UserID), session.Code, r.ttl)
+	pipe.Set(ctx, codeKey(session.Code), body, ttl)
+	pipe.Set(ctx, userKey(session.UserID), session.Code, ttl)
 	if _, err := pipe.Exec(ctx); err != nil {
 		return fmt.Errorf("redis pipeline error: %w", err)
 	}
@@ -77,9 +85,10 @@ func (r *SessionRepo) UpdateMac(ctx context.Context, code, mac, ip string) error
 		return fmt.Errorf("marshal error: %w", err)
 	}
 
+	ttl := r.ttlFor(session)
 	pipe := r.client.TxPipeline()
-	pipe.Set(ctx, codeKey(code), body, r.ttl)
-	pipe.Set(ctx, userKey(session.UserID), session.Code, r.ttl)
+	pipe.Set(ctx, codeKey(code), body, ttl)
+	pipe.Set(ctx, userKey(session.UserID), session.Code, ttl)
 	if _, err := pipe.Exec(ctx); err != nil {
 		return fmt.Errorf("redis pipeline error: %w", err)
 	}

@@ -3,12 +3,13 @@ package models
 import "time"
 
 type WifiSession struct {
-	UserID    string    `json:"user_id"`
-	Username  string    `json:"username"`
-	Code      string    `json:"code"`
-	Mac       string    `json:"mac"`
-	IP        string    `json:"ip"`
-	CreatedAt time.Time `json:"created_at"`
+	UserID      string        `json:"user_id"`
+	Username    string        `json:"username"`
+	Code        string        `json:"code"`
+	Mac         string        `json:"mac"`
+	IP          string        `json:"ip"`
+	CreatedAt   time.Time     `json:"created_at"`
+	TTLDuration time.Duration `json:"ttl_duration"`
 }
 
 type MattermostRequest struct {

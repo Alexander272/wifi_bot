@@ -19,9 +19,9 @@ func NewUserSessionRepo(db *sqlx.DB) *UserSessionRepo {
 }
 
 func (r *UserSessionRepo) Create(ctx context.Context, s *models.UserSession) error {
-	query := `INSERT INTO user_sessions (user_id, username, code, mac, ip, login_at, is_active)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`
-	_, err := r.db.ExecContext(ctx, query, s.UserID, s.Username, s.Code, s.Mac, s.IP, s.LoginAt, true)
+	query := `INSERT INTO user_sessions (user_id, username, code, mac, ip, login_at, is_active, ttl_duration)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	_, err := r.db.ExecContext(ctx, query, s.UserID, s.Username, s.Code, s.Mac, s.IP, s.LoginAt, true, int64(s.TTLDuration))
 	if err != nil {
 		return fmt.Errorf("failed to create user session: %w", err)
 	}
@@ -39,7 +39,7 @@ func (r *UserSessionRepo) CloseActive(ctx context.Context, mac string) error {
 }
 
 func (r *UserSessionRepo) GetActiveByMAC(ctx context.Context, mac string) (*models.UserSession, error) {
-	query := `SELECT id, user_id, username, code, mac, ip, login_at, logout_at, is_active
+	query := `SELECT id, user_id, username, code, mac, ip, login_at, logout_at, is_active, ttl_duration
 		FROM user_sessions WHERE mac = $1 AND is_active = true LIMIT 1`
 	var s models.UserSession
 	if err := r.db.GetContext(ctx, &s, query, mac); err != nil {
@@ -49,7 +49,7 @@ func (r *UserSessionRepo) GetActiveByMAC(ctx context.Context, mac string) (*mode
 }
 
 func (r *UserSessionRepo) GetActiveByUserID(ctx context.Context, userID string) (*models.UserSession, error) {
-	query := `SELECT id, user_id, username, code, mac, ip, login_at, logout_at, is_active
+	query := `SELECT id, user_id, username, code, mac, ip, login_at, logout_at, is_active, ttl_duration
 		FROM user_sessions WHERE user_id = $1 AND is_active = true ORDER BY login_at DESC LIMIT 1`
 	var s models.UserSession
 	if err := r.db.GetContext(ctx, &s, query, userID); err != nil {
@@ -59,7 +59,7 @@ func (r *UserSessionRepo) GetActiveByUserID(ctx context.Context, userID string) 
 }
 
 func (r *UserSessionRepo) GetLastByUserID(ctx context.Context, userID string) (*models.UserSession, error) {
-	query := `SELECT id, user_id, username, code, mac, ip, login_at, logout_at, is_active
+	query := `SELECT id, user_id, username, code, mac, ip, login_at, logout_at, is_active, ttl_duration
 		FROM user_sessions WHERE user_id = $1 ORDER BY login_at DESC LIMIT 1`
 	var s models.UserSession
 	if err := r.db.GetContext(ctx, &s, query, userID); err != nil {
@@ -69,7 +69,7 @@ func (r *UserSessionRepo) GetLastByUserID(ctx context.Context, userID string) (*
 }
 
 func (r *UserSessionRepo) ListActive(ctx context.Context) ([]models.UserSession, error) {
-	query := `SELECT id, user_id, username, code, mac, ip, login_at, logout_at, is_active
+	query := `SELECT id, user_id, username, code, mac, ip, login_at, logout_at, is_active, ttl_duration
 		FROM user_sessions WHERE is_active = true ORDER BY login_at DESC`
 	var sessions []models.UserSession
 	if err := r.db.SelectContext(ctx, &sessions, query); err != nil {

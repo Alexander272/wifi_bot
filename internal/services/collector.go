@@ -144,12 +144,20 @@ func (c *Collector) collect(ctx context.Context) {
 	}
 }
 
+func (c *Collector) ttlFor(s models.UserSession) time.Duration {
+	if s.TTLDuration > 0 {
+		return s.TTLDuration
+	}
+	return c.codeTTL
+}
+
 func (c *Collector) cleanupExpiredSessions(ctx context.Context) {
 	if c.codeTTL <= 0 {
 		return
 	}
 
-	threshold := time.Now().Add(-c.codeTTL - time.Hour)
+	now := time.Now()
+	globalThreshold := now.Add(-c.codeTTL - time.Hour)
 
 	active, err := c.userSession.ListActive(ctx)
 	if err != nil {
@@ -157,7 +165,10 @@ func (c *Collector) cleanupExpiredSessions(ctx context.Context) {
 		return
 	}
 
+	var earliestClose time.Time
 	for _, s := range active {
+		ttl := c.ttlFor(s)
+		threshold := now.Add(-ttl - time.Hour)
 		if s.LoginAt.Before(threshold) {
 			logger.Info("safety-net: disconnecting expired session",
 				logger.StringAttr("mac", s.Mac),
@@ -166,15 +177,22 @@ func (c *Collector) cleanupExpiredSessions(ctx context.Context) {
 			)
 			c.mikrotik.Disconnect(ctx, s.Mac)
 		}
+		if s.LoginAt.Before(globalThreshold) && ttl == c.codeTTL {
+			if earliestClose.IsZero() || s.LoginAt.Before(earliestClose) {
+				earliestClose = s.LoginAt
+			}
+		}
 	}
 
-	n, err := c.userSession.CloseInactiveOlderThan(ctx, threshold)
-	if err != nil {
-		logger.Error("safety-net: failed to close expired sessions", logger.ErrAttr(err))
-		return
-	}
-	if n > 0 {
-		logger.Info("safety-net: closed expired sessions", logger.IntAttr("count", int(n)))
+	if !earliestClose.IsZero() {
+		n, err := c.userSession.CloseInactiveOlderThan(ctx, earliestClose)
+		if err != nil {
+			logger.Error("safety-net: failed to close expired sessions", logger.ErrAttr(err))
+			return
+		}
+		if n > 0 {
+			logger.Info("safety-net: closed expired sessions", logger.IntAttr("count", int(n)))
+		}
 	}
 }
 
@@ -204,7 +222,8 @@ func (c *Collector) syncUserSessions(ctx context.Context, mikrotikSessions []mik
 				continue
 			}
 		}
-		if c.codeTTL > 0 && s.LoginAt.Add(c.codeTTL).Before(now) {
+		ttl := c.ttlFor(s)
+		if ttl > 0 && s.LoginAt.Add(ttl).Before(now) {
 			logger.Info("collector: code ttl expired, disconnecting",
 				logger.StringAttr("mac", s.Mac),
 				logger.StringAttr("user_id", s.UserID),

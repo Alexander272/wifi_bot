@@ -24,14 +24,15 @@ func (r *UserSessionRepo) Create(_ context.Context, s *models.UserSession) error
 
 	r.seq++
 	r.sessions = append(r.sessions, models.UserSession{
-		ID:       r.seq,
-		UserID:   s.UserID,
-		Username: s.Username,
-		Code:     s.Code,
-		Mac:      s.Mac,
-		IP:       s.IP,
-		LoginAt:  time.Now(),
-		IsActive: true,
+		ID:          r.seq,
+		UserID:      s.UserID,
+		Username:    s.Username,
+		Code:        s.Code,
+		Mac:         s.Mac,
+		IP:          s.IP,
+		LoginAt:     time.Now(),
+		IsActive:    true,
+		TTLDuration: s.TTLDuration,
 	})
 	return nil
 }

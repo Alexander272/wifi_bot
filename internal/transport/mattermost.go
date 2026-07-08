@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -47,42 +48,90 @@ func (h *Handler) HandleMattermost(c *gin.Context) {
 		}
 
 	case "/wifi_reset":
-		if bot != nil && !bot.IsTeamMember(req.UserID) {
+		if bot == nil || !bot.IsTeamMember(req.UserID) {
 			text = "❌ Нет доступа."
 			break
 		}
-		if !h.allowRateLimit("wifi:ratelimit:reset:" + req.UserID) {
-			text = "Слишком часто. Лимит: 1 раз в 5 минут."
-			break
-		}
-		code, err := h.services.Session.ResetCode(c.Request.Context(), req.UserID, req.UserName)
-		if err != nil {
-			text = "Ошибка при сбросе кода. Попробуйте позже."
-			logger.Error("failed to reset code", logger.ErrAttr(err))
+		name := strings.TrimSpace(req.Text)
+		if bot.IsAdmin(req.UserID) && name != "" {
+			if !h.allowRateLimit("wifi:ratelimit:codegen:" + req.UserID) {
+				text = "Слишком частые запросы. Подождите."
+				break
+			}
+			args := strings.Fields(name)
+			var ttl time.Duration
+			nameParts := args
+			if last := nameParts[len(nameParts)-1]; len(nameParts) > 1 {
+				if d, err := time.ParseDuration(last); err == nil {
+					ttl = d
+					nameParts = nameParts[:len(nameParts)-1]
+				}
+			}
+			userName := strings.Join(nameParts, " ")
+			code, err := h.services.Session.ResetCodeWithTTL(c.Request.Context(), "admin_generated:"+userName, userName, ttl)
+			if err != nil {
+				text = "Ошибка при сбросе кода."
+				logger.Error("failed to admin reset code", logger.ErrAttr(err))
+			} else {
+				text = "✅ Код для **" + userName + "** сброшен.\nНовый код: **" + code + "**"
+				if ttl > 0 {
+					text += "\n⏱ Время жизни: **" + ttl.String() + "**"
+				}
+			}
 		} else {
-			text = "Код сброшен.\nНовый код: **" + code + "**"
+			if !h.allowRateLimit("wifi:ratelimit:reset:" + req.UserID) {
+				text = "Слишком часто. Лимит: 1 раз в 5 минут."
+				break
+			}
+			code, err := h.services.Session.ResetCode(c.Request.Context(), req.UserID, req.UserName)
+			if err != nil {
+				text = "Ошибка при сбросе кода. Попробуйте позже."
+				logger.Error("failed to reset code", logger.ErrAttr(err))
+			} else {
+				text = "Код сброшен.\nНовый код: **" + code + "**"
+			}
 		}
 
-	case "/wifi_code":
+	case "/code", "/wifi_code":
 		if bot == nil || !bot.IsAdmin(req.UserID) {
 			text = "❌ Команда только для администраторов."
 			break
 		}
-		name := strings.TrimSpace(req.Text)
-		if name == "" {
-			text = "Укажите ФИО: `/wifi_code Иванов Иван`"
+		args := strings.Fields(req.Text)
+		if len(args) == 0 {
+			text = "Укажите ФИО: `/code Иванов Иван [TTL]`\nTTL — опционально, например: `72h`, `48h`, `30m`"
 			break
 		}
 		if !h.allowRateLimit("wifi:ratelimit:codegen:" + req.UserID) {
 			text = "Слишком частые запросы. Подождите."
 			break
 		}
-		code, err := h.services.Session.GetOrCreateCode(c.Request.Context(), "admin_generated:"+name, name)
+
+		var ttl time.Duration
+		nameParts := args
+		if last := nameParts[len(nameParts)-1]; len(nameParts) > 1 {
+			if d, err := time.ParseDuration(last); err == nil {
+				ttl = d
+				nameParts = nameParts[:len(nameParts)-1]
+			}
+		}
+		name := strings.Join(nameParts, " ")
+
+		var code string
+		var err error
+		if ttl > 0 {
+			code, err = h.services.Session.GetOrCreateCodeWithTTL(c.Request.Context(), "admin_generated:"+name, name, ttl)
+		} else {
+			code, err = h.services.Session.GetOrCreateCode(c.Request.Context(), "admin_generated:"+name, name)
+		}
 		if err != nil {
 			text = "Ошибка при генерации кода."
 			logger.Error("failed to generate admin code", logger.ErrAttr(err))
 		} else {
 			text = "✅ Код для **" + name + "**: **" + code + "**"
+			if ttl > 0 {
+				text += "\n⏱ Время жизни: **" + ttl.String() + "**"
+			}
 		}
 
 	case "/wifi_stats":
@@ -126,7 +175,7 @@ func (h *Handler) HandleMattermost(c *gin.Context) {
 		text = bld.String()
 
 	default:
-		text = "Неизвестная команда. Используйте `/wifi`, `/wifi_reset`, `/wifi_code` или `/wifi_stats`."
+		text = "Неизвестная команда. Используйте `/wifi`, `/wifi_reset`, `/code` или `/wifi_stats`."
 	}
 
 	c.JSON(http.StatusOK, models.MattermostResponse{

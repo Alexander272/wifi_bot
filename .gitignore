@@ -11,3 +11,4 @@ dist/
 *.test
 *.prof
 .DS_Store
+wifi_bot
